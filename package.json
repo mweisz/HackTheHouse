@@ -1,0 +1,11 @@
+{
+    "name": "HackTheHouseServer",
+    "version": "0.1.0",
+    "description": "",
+    "dependencies": {
+        "express": "4.8.8",
+        "method-override": "2.2.0",
+        "body-parser": "*"
+    },
+  "license": "GPL"
+}
