@@ -6,7 +6,8 @@
         "express": "4.8.8",
         "method-override": "2.2.0",
         "body-parser": "*",
-        "mongodb": "*"
+        "mongodb": "*",
+        "colors" : "*"
     },
   "license": "GPL"
 }
