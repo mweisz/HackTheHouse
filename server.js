@@ -27,7 +27,9 @@ app.use(function (req, res, next) {
 // router.use('/api', api.router);
 
 
-app.get('/test', items.postItem);
+app.post('/item', items.postItem);
+app.get('/items', items.getItems);
+app.get('/items/:id', items.getItemById);
 
 
 

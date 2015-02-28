@@ -5,7 +5,8 @@
     "dependencies": {
         "express": "4.8.8",
         "method-override": "2.2.0",
-        "body-parser": "*"
+        "body-parser": "*",
+        "mongodb": "*"
     },
   "license": "GPL"
 }
