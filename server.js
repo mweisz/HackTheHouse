@@ -2,17 +2,11 @@ var items = require("./routes/items");
 var colors = require("colors");
 
 var express        = require("express"),
-    //morgan         = require('morgan'),
     bodyParser     = require('body-parser'),
     methodOverride = require('method-override'),
 
-    api = require('./api.js'),
-
     app     = express(),
-    // router  = express.Router(),
     port    = process.env.PORT || 5006;
-
-//app.use(morgan('dev'));
 
 
 app.use(bodyParser.urlencoded( { extended: true } ));
@@ -23,9 +17,6 @@ app.use(function (req, res, next) {
     res.set('Access-Control-Allow-Origin', '*');
     next();
 });
-
-// app.use(router);
-// router.use('/api', api.router);
 
 
 app.post('/item', items.postItem);
