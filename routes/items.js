@@ -4,25 +4,28 @@ var Db = require('mongodb').Db;
 var Server = require('mongodb').Server;
 var BSON = require('mongodb').BSONPure;
 var MongoClient = require('mongodb').MongoClient;
+var http = require('http');
 
 var db = new Db('hackTheHouse', new Server("127.0.0.1", 27017,
-   {auto_reconnect: false, poolSize: 4}), {w:0, native_parser: false});
+ {auto_reconnect: false, poolSize: 4}), {w:0, native_parser: false});
 
 
 // Globals
-var lastItem;
-var lastUserName;
-var lastWeight; 
+var lastProductCode;
+var lastUserId;
+var lastWeight = undefined; 
 var previousWeight = 0;
 
 
 var users = {
-    12344 : "Jonas"
+    12344 : "Jonas",
+    123 : "User B"
 }
 
 var barcodes = {
     111 : "Coca Cola", 
-    555 : "Milk"
+    555 : "Milk",
+    4013143081078 : "Water"
 }
 
 
@@ -68,92 +71,120 @@ db.open(function(err, db) {
 
 function goIfReady(){
     // Guard clauses
-    if(lastUserName == undefined) return false; // check if user is logged in
-    if(lastItem == undefined) return false;     // check if product has been checked in
-    if(lastWeight == undefined) return false;   // check if new weight is available
+    console.log("user:" + lastUserId + ". product: " + lastProductCode + ". lastweight: " + lastWeight);
+    if(lastUserId == undefined) return;     // check if user is logged in
+    if(lastProductCode == undefined) return;  // check if product has been checked in
+    if(lastWeight == undefined) return;       // check if new weight is available
 
     // Everything is ready
-    updateFridge();
-
-    // Reset values
-    lastItem = undefined;
-    lastWeight = undefined;
+    go();
 }
 
-function updateFridge(){
-    console.log("UPDATING FRIDGE....");
-}
+function go(){
+    console.log("GO");
+    var productWeight = lastWeight - previousWeight;
+    // New product (not in fridge already)
+    isNewProduct(lastProductCode, function ok (){
+        insertIntoFridge(lastProductCode, productWeight);
 
-function onWeightUpdate(oldWeight, currentWeight){
+        // Reset values
+        lastProductCode = undefined;
+        lastWeight = undefined;
+    }, function nok () {
+        calculateProductWeightDifference(lastProductCode, productWeight, function finished (diff) {
+            // Update user consumption
+            addUserConsumption(lastProductCode, diff, lastUserId);
+            updateFridge(lastProductCode, lastWeight);
 
-    // Fetch last item
-    /*var lastItem;
-    db.collection('lastItem', function(err, collection) {
-        if(err){
-            console.log(err);
-        } 
-
-        collection.find().toArray(function (err, items) {
-            if (err) console.log(err);
-            console.log("in the array".green, items);
-            lastItem = items[0];
-            console.log("ITEM:".red, lastItem);
+            // Reset values
+            lastProductCode = undefined;
+            lastWeight = undefined;
         });
-    });*/
 
-    var userName = lastUserName;
-    var item = lastItem;
+        
+    });
 
-    var newItemWeight = currentWeight - oldWeight;
+}
 
-
-    // Check if item is already in the fridge
+function isNewProduct(productCode, ok, nok){
     db.collection('items', function(err, collection) {
-        collection.find({itemId: item.itemId}).toArray(function(err, items) {
-            if(items.length != 0){ // item IS already in the fridge
+        collection.find({itemId: lastProductCode}).toArray(function(err, items) {
+           if (items.length > 0){
+            nok();
+        } else{
+            ok();
+        }
+    });
+    });
+    // var doc = db.runCommand(  {count: 'items', query : {itemId: lastProductCode}});
 
-                // Get old weight of item
-                var oldItemWeight = items[0].weight;
-              
+}
 
-                // Update item with new weight in fridge
-                collection.update({itemId: item.itemId},
-                                     { $set: { weight: newItemWeight} } );
-
-
-                // Save consumption for user
-                var consumptionWeight = oldItemWeight - newItemWeight;
-                item.weight = consumptionWeight;
-                var consumption = {"userName": userName, "item": item };
-                db.collection('consumptions', function(err, collection) {
-                    collection.insert(consumption, {safe:true}, function(err, result) {
-                        if (err) {
-                            console.log(consumption + " couldn't be saved.")
-                        } else {
-                            console.log('Success: ' + JSON.stringify(result[0]));
-                        }
-                    });
-                });
-
-
-            } else{ // item is NOT in the fridge
-                item.weight = newItemWeight;
-               
-                // SAVE INTO DB
-                db.collection('items', function(err, collection) {
-                    collection.insert(item, {safe:true}, function(err, result) {
-                        if (err) {
-                            console.log(item + " couldn't be saved.")
-                        } else {
-                            console.log('Success: ' + JSON.stringify(result[0]));
-                        }
-                    });
-                });
+function insertIntoFridge(productCode, productWeight){
+    //insert into db
+    var item = { itemId : productCode, weight: productWeight }
+    db.collection('items', function(err, collection) {
+        collection.insert(item, {safe:true}, function(err, result) {
+            if (err) {
+                console.log(item + " couldn't be saved.")
+            } else {
+                console.log('Success: ' + JSON.stringify(result[0]));
             }
         });
     });
-        
 }
+
+function calculateProductWeightDifference(productCode, weight, cb){
+    db.collection('items', function(err, collection) {
+        collection.find({itemId: productCode}).toArray(function(err, items) {
+            cb(items[0].weight - weight);
+        });
+    });
+}
+
+function addUserConsumption(productCode, productWeightDifference, user){
+    var wolframAlphaData = lookupNutritionFacts(productCode, productWeightDifference);
+    var consumption = {name : barcodes[productCode], amount: productWeightDifference, nutritionFacts: wolframAlphaData,
+      userId: user };
+
+    // save in db
+    db.collection('consumptions', function(err, collection) {
+        collection.insert(consumption, {safe:true}, function(err, result) {
+            if (err) {
+                console.log(consumption + " couldn't be saved.")
+            } else {
+                console.log('Success: ' + JSON.stringify(result[0]));
+            }
+        });
+    });
+}
+
+
+function updateFridge(productCode, productWeight){
+    db.collection('items', function(err, collection) {
+        collection.find({itemId: productCode}).toArray(function(err, items) {
+            // Update item with new weight in fridge
+            collection.update({itemId: productCode},
+               { $set: { weight: productWeight} } );
+        });
+    });
+}
+
+function lookupNutritionFacts(productCode, amount){
+    var productName = barcodes[productCode];
+    // Call Wolfram Alpha
+    var options = { host: 'www.random.org',
+                    path: '/integers/?num=1&min=1&max=10&col=1&base=10&format=plain&rnd=new'};
+
+    function callback(response){
+        console.log("RESPONSE");
+    }
+   // http.request(options, )
+
+
+    return { carbohidrates : 300 , fat : 24, calories: 125 , cholesterol: 12, proteins: 3};
+}
+
 
 
 exports.postItem = function (req, res){
@@ -178,15 +209,15 @@ exports.postItem = function (req, res){
 
 
 exports.lastProduct = function (req, res){
-    // var productCode = JSON.parse(req.body.barcode);
-    console.log(req.body);
+    var productCode = JSON.parse(req.body.id);
+    lastProductCode = productCode;
     res.send(200);
     goIfReady();
 }
 
 // exports.postItem = function (req, res){
 //     var myItem = JSON.parse(req.body.item);
-    
+
 //     lastItem = myItem;
 
 //     res.send(200);
@@ -233,15 +264,29 @@ exports.getItemById = function (req, res){
             console.log('not found');
         } else {
             collection.find({itemId: id}).toArray(function(err, items) {
-                        console.log(items);
-                        res.send(items[0]);
-                     });
+                console.log(items);
+                res.send(items[0]);
+            });
         }
     });
 }
 
-exports.getConsumptionsByUserName = function (req, res){
-    res.send(200);
+exports.getConsumptionsByUserId = function (req, res){
+    var dummyConsumptions = 
+    [
+    {name : "milk", amount : 300, nutritionFacts : 
+    { carbohidrates : 19 , fat : 24, calories: 125 , cholesterol: 12, proteins: 18}
+},
+{name : "coca cola", amount : 500, nutritionFacts : 
+{ carbohidrates : 20 , fat : 82, calories: 129 , cholesterol: 30, proteins: 6}
+},
+{name : "coca cola", amount : 500, nutritionFacts : 
+{ carbohidrates : 40 , fat : 65, calories: 83 , cholesterol: 30, proteins: 21}
+}
+];
+
+console.log("Get consumptions.");
+res.send(200, dummyConsumptions);
     // console.log(req.params);
 
     // var id = parseInt(req.params.id);
@@ -262,7 +307,8 @@ exports.postLastId = function (req, res){
     var userId = parseInt(req.body.userId);
     var name = users[userId];
     console.log(name + " just logged in." );
-    lastUserName = name;
+    //lastUserName = name;
+    lastUserId = userId;
 
     res.send(200);
     goIfReady();

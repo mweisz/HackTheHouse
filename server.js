@@ -20,13 +20,14 @@ app.use(function (req, res, next) {
 
 
 app.post('/item', items.postItem);
+
 app.post('/lastProduct', items.lastProduct);
 app.post('/lastId', items.postLastId);
 app.post('/weight', items.postWeight);
 
 app.get('/items', items.getItems);
 app.get('/items/:id', items.getItemById);
-app.get('/consumptions/:userName', items.getConsumptionsByUserName);
+app.get('/consumptions/:userId', items.getConsumptionsByUserId);
 
 
 
