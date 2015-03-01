@@ -17,15 +17,25 @@ var relayr = new Relayr(app_id);
 relayr.connect(token, dev_id);
 var counter = 0;    
 
-
+var iteration = 0;
+var logCounter = 0;
 
 relayr.on('data', function (topic, msg) {
-        var val = parseInt(msg.readings[0].value.charCodeAt(0)) * 42 - 584;
+        var val = parseInt(msg.readings[0].value.charCodeAt(0)) * 13.7 - 6.5;
+        // console.log('\033[2J');
+        if(logCounter == 0){
+            console.log(JSON.stringify(msg.readings[0]).grey);
+            
+        }
+        logCounter++;
+        if(logCounter > 2) logCounter = 0;
+        //console.log(val, lastWeight );
         var threshold = 30;
-        if (Math.abs(lastweight - val) > threshold) {
+        if (Math.abs(lastWeight - val) > threshold) {
+            //console.log("Threshold passed. ", counter);
             counter++;
             if(counter > 2){
-                console.log("OLD: " + lastWeight + ". NEW:" + val);
+                output("Weight difference detected. OLD: " + (lastWeight +"").bold.white + ". NEW:".green + (val +"").bold.white);
                 previousWeight = lastWeight;
                 lastWeight = val;
                 goIfReady();
@@ -43,19 +53,21 @@ var db = new Db('hackTheHouse', new Server("127.0.0.1", 27017,
 // Globals
 var lastProductCode;
 var lastUserId;
-var lastWeight = undefined; 
+var lastWeight = 0; 
 var previousWeight = 0;
 
 
 var users = {
-    122 : "Jonas",
-    123 : "User B"
+    122 : "Maria",
+    123 : "Alejandro"
 }
 
 var barcodes = {
     111 : "Coca Cola", 
     555 : "Milk",
-    4013143081078 : "Mineral Water"
+    4013143081078 : "Mineral Water",
+    41001318 : "Beer (Becks)",
+    4260055880286 : "Butter Milk (Hemme Milch)"
 }
 
 
@@ -101,7 +113,7 @@ db.open(function(err, db) {
 
 function goIfReady(){
     // Guard clauses
-    console.log("user:" + lastUserId + ". product: " + lastProductCode + ". lastweight: " + lastWeight);
+    // console.log("user:" + lastUserId + ". product: " + lastProductCode + ". lastweight: " + lastWeight);
     if(lastUserId == undefined) return;     // check if user is logged in
     if(lastProductCode == undefined) return;  // check if product has been checked in
     if(lastWeight == undefined) return;       // check if new weight is available
@@ -111,24 +123,20 @@ function goIfReady(){
 }
 
 function go(){
-    console.log("GO");
     var productWeight = lastWeight - previousWeight;
     // New product (not in fridge already)
     isNewProduct(lastProductCode, function ok (){
         insertIntoFridge(lastProductCode, productWeight);
+            lastProductCode = undefined;
 
-        // Reset values
-        lastProductCode = undefined;
-        lastWeight = undefined;
+
     }, function nok () {
         calculateProductWeightDifference(lastProductCode, productWeight, function finished (diff) {
             // Update user consumption
             addUserConsumption(lastProductCode, diff, lastUserId);
             updateFridge(lastProductCode, lastWeight);
 
-            // Reset values
             lastProductCode = undefined;
-            lastWeight = undefined;
         });
 
         
@@ -158,7 +166,7 @@ function insertIntoFridge(productCode, productWeight){
             if (err) {
                 console.log(item + " couldn't be saved.")
             } else {
-                console.log('Success: ' + JSON.stringify(result[0]));
+                //console.log('Success: ' + JSON.stringify(result[0]));
             }
         });
     });
@@ -183,7 +191,7 @@ function addUserConsumption(productCode, productWeightDifference, user){
             if (err) {
                 console.log(consumption + " couldn't be saved.")
             } else {
-                console.log('Success: ' + JSON.stringify(result[0]));
+                //console.log('Success: ' + JSON.stringify(result[0]));
             }
         });
     });
@@ -205,52 +213,62 @@ function lookupNutritionFacts(productCode, amount){
     // Call Wolfram Alpha
     var url = "http://api.wolframalpha.com/v2/query?appid=7TPW94-3WQTJLGR7E&input="+ amount + "%20g%20of%20"+ productName +"&format=plaintext";
 
-    request(url, function (error, response, body) {
-      if (!error && response.statusCode == 200) {
-        return parseWolframAlpha(body); // Show the HTML for the Google homepage. 
-      }
-    })
+    //request(url, function (error, response, body) {
+    //  if (!error && response.statusCode == 200) {
+        return parseWolframAlpha(url, amount); // Show the HTML for the Google homepage. 
+    //  }
+    //})
 
 
     //return { carbohidrates : 300 , fat : 24, calories: 125 , cholesterol: 12, proteins: 3};
 }
 
-function parseWolframAlpha(rawData){
-    console.log("Got data. start parsing.");
-    var startFat = rawData.indexOf("total fat") + 11;
-    var endFat = rawData.indexOf("|", startFat) - 3;
-    var fat = parseInt(rawData.substring(startFat,endFat));
+function parseWolframAlpha(rawData, amount){
+    // console.log("Got data. start parsing.");
+    // var startFat = rawData.indexOf("total fat") + 11;
+    // var endFat = rawData.indexOf("|", startFat) - 3;
+    // var fat = parseInt(rawData.substring(startFat,endFat));
 
-    var startCarbo = rawData.indexOf("total carbohydrates") + 21;
-    var endCarbo = rawData.indexOf("|", startCarbo) - 3;
-    var carbohidrates = parseInt(rawData.substring(startCarbo,endCarbo)); 
+    // var startCarbo = rawData.indexOf("total carbohydrates") + 21;
+    // var endCarbo = rawData.indexOf("|", startCarbo) - 3;
+    // var carbohidrates = parseInt(rawData.substring(startCarbo,endCarbo)); 
 
-    var startProteins = rawData.indexOf("protein  ") + 9;
-    var endProteins = rawData.indexOf("|", startProteins) - 3;
-    var proteins = parseInt(rawData.substring(startProteins,endProteins)); 
+    // var startProteins = rawData.indexOf("protein  ") + 9;
+    // var endProteins = rawData.indexOf("|", startProteins) - 3;
+    // var proteins = parseInt(rawData.substring(startProteins,endProteins)); 
 
-    var startCholesterol = rawData.indexOf("cholesterol  ") + 13;
-    var endCholesterol = rawData.indexOf("|", startCholesterol) - 3;
-    var cholesterol = parseInt(rawData.substring(startCholesterol,endCholesterol)); 
+    // var startCholesterol = rawData.indexOf("cholesterol  ") + 13;
+    // var endCholesterol = rawData.indexOf("|", startCholesterol) - 3;
+    // var cholesterol = parseInt(rawData.substring(startCholesterol,endCholesterol)); 
 
-    var startCalories = rawData.indexOf("tal calories  ") + 14;
-    var endCalories = rawData.indexOf("|", startCalories) - 3;
-    var calories = parseInt(rawData.substring(startCalories,endCalories)); 
+    // var startCalories = rawData.indexOf("tal calories  ") + 14;
+    // var endCalories = rawData.indexOf("|", startCalories) - 3;
+    // var calories = parseInt(rawData.substring(startCalories,endCalories)); 
 
-    console.log("Fat:" + fat, {carbohidrates : carbohidrates, fat: fat, proteins: proteins, calories: calories} )
-    console.log("finished parsing.");
+    // console.log("Fat:" + fat, {carbohidrates : carbohidrates, fat: fat, proteins: proteins, calories: calories} )
+    // console.log("finished parsing.");
 
     // if WIFI times out use locally stored data
     fallbackData = {
-        4013143081078:  {carbohidrates : carbohidrates, fat: fat, proteins: proteins, calories: calories}
+        4013143081078:  {carbohidrates : 123, fat: 11, proteins: 11, calories: 11},
+        41001318 : {carbohidrates : 4, fat: 0, proteins: 1, calories: 102, cholesterol: 3},
+        4260055880286 : {carbohidrates : 6, fat: 20, proteins: 4, calories: 58, cholesterol: 2}
 
     };
 
+    var name = users[lastUserId];
+    output(name.bold.yellow + " consumed " + (amount + "").bold.yellow + " grams of " + (barcodes[lastProductCode] +"").bold.yellow)
 
-    return {carbohidrates : carbohidrates, fat: fat, proteins: proteins, calories: calories};
+
+    return fallbackData[lastProductCode];
 }
 
-
+function output(msg, color){
+    console.log("**********************************************************".green)
+    console.log(("*   " + msg).green);
+    console.log("**********************************************************".green)
+    console.log("\n");
+}
 
 exports.postItem = function (req, res){
     var barcode = req.body.barcode;
@@ -259,14 +277,14 @@ exports.postItem = function (req, res){
     var user = req.body.user;
 
 
-    console.log('Adding Item: ' + JSON.stringify(myItem));
+    output('Adding Item: ' + JSON.stringify(myItem));
     db.collection('items', function(err, collection) {
         collection.insert(myItem, {safe:true}, function(err, result) {
             if (err) {
                 res.send({'error':'An error has occurred'});
             } else {
-                console.log('Success: ' + JSON.stringify(result[0]));
-                res.send(result[0]);
+                //console.log('Success: ' + JSON.stringify(result[0]));
+                res.status(200).end();
             }
         });
     });
@@ -276,8 +294,16 @@ exports.postItem = function (req, res){
 exports.lastProduct = function (req, res){
     var productCode = JSON.parse(req.body.id);
     lastProductCode = productCode;
-    res.send(200);
-    goIfReady();
+
+    output("Scanned Product: " + (productCode + "").bold.red  +". ");
+    //output("Looking up...");
+    output("Checked in: " + (barcodes[productCode]+ "").bold.yellow);
+    if( productCode == 4260055880286) {
+        output("Change cooling profile to Profile C".blue)
+    }
+
+    res.status(200).end();
+    //goIfReady();
 }
 
 // exports.postItem = function (req, res){
@@ -297,9 +323,9 @@ exports.postWeight = function (req, res){
     var weight = parseInt(req.body.weight);
     if(lastWeight != undefined) previousWeight = lastWeight;
     lastWeight = weight;
-    console.log("Weight updated from " + previousWeight + " to " + weight);
+    // output("Weight of the fridge updated from " + previousWeight + " to " + weight);
 
-    res.send(200);
+    res.status(200).end();
     goIfReady();
 
     // TEST CODE (mock incoming weight update)
@@ -308,7 +334,7 @@ exports.postWeight = function (req, res){
 
 
 exports.getItems = function (req, res){
-    console.log(req.params);
+    //console.log(req.params);
 
     console.log('Retrieving all items:');
     db.collection('items', function(err, collection) {
@@ -320,16 +346,16 @@ exports.getItems = function (req, res){
 }
 
 exports.getItemById = function (req, res){
-    console.log(req.params);
+    //console.log(req.params);
 
     var id = parseInt(req.params.id);
-    console.log('Retrieving item: ' + id);
+    output('Retrieving item: ' + id);
     db.collection('items', function(err, collection) {
         if (err){
             console.log('not found');
         } else {
             collection.find({itemId: id}).toArray(function(err, items) {
-                console.log(items);
+                //console.log(items);
                 res.send(items[0]);
             });
         }
@@ -337,21 +363,37 @@ exports.getItemById = function (req, res){
 }
 
 exports.getConsumptionsByUserId = function (req, res){
-    var dummyConsumptions = 
-    [
-    {name : "milk", amount : 300, nutritionFacts : 
-    { carbohidrates : 19 , fat : 24, calories: 125 , cholesterol: 12, proteins: 18}
-},
-{name : "coca cola", amount : 500, nutritionFacts : 
-{ carbohidrates : 20 , fat : 82, calories: 129 , cholesterol: 30, proteins: 6}
-},
-{name : "coca cola", amount : 500, nutritionFacts : 
-{ carbohidrates : 40 , fat : 65, calories: 83 , cholesterol: 30, proteins: 21}
-}
-];
+    var dummyConsumptions = { 0: 
+        [
+        {name : "milk", amount : 300, nutritionFacts : 
+        { carbohidrates : 1 , fat : 24, calories: 100 , cholesterol: 1, proteins: 1}
+    }
+    ],
+    1: [
+        {name : "milk", amount : 300, nutritionFacts : 
+        { carbohidrates : 100 , fat : 25, calories: 1 , cholesterol: 1, proteins: 1}
+    }
+    ],
+};
 
-console.log("Get consumptions.");
-res.send(200, dummyConsumptions);
+
+var wifiSucks = true;
+if(!wifiSucks){
+    // fetch actual consumption
+     db.collection('consumptions', function(err, collection) {
+            collection.find().toArray(function(err, items) {
+               // console.log(items);
+                res.send(items);
+            });
+    });
+} else {
+    output("Mobile App is requesting consumptions...".magenta);
+    res.send(200, dummyConsumptions[iteration]);
+    iteration++;
+    if(iteration > 1) iteration = 0;
+}
+
+
     // console.log(req.params);
 
     // var id = parseInt(req.params.id);
@@ -371,13 +413,13 @@ res.send(200, dummyConsumptions);
 exports.postLastId = function (req, res){
     var userId = parseInt(req.body.userId);
     var name = users[userId];
-    console.log(name + " just logged in." );
+    output(name.bold.yellow + " just logged in. Welcome, " + name.bold.yellow );
     //lastUserName = name;
     lastUserId = userId;
 
-    console.log(lookupNutritionFacts(555, 300));
+    //console.log(lookupNutritionFacts(555, 300));
 
-    res.send(200);
-    goIfReady();
+    res.status(200).end();
+    //goIfReady();
 }
 
