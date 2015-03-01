@@ -4,7 +4,37 @@ var Db = require('mongodb').Db;
 var Server = require('mongodb').Server;
 var BSON = require('mongodb').BSONPure;
 var MongoClient = require('mongodb').MongoClient;
-var http = require('http');
+var request = require('request');
+
+
+// Relayr stuff
+var Relayr = require('relayr');
+
+var app_id = "be38eecf-79f4-4d18-aa83-88fe1a8043ea";
+var dev_id = "2d89b26b-f2d5-4b67-a535-04b3fe2fe1f7";
+var token  = "J4M1btoT1.qac-lRqATjiONcVNBy1_mr";
+var relayr = new Relayr(app_id);
+relayr.connect(token, dev_id);
+var counter = 0;    
+
+
+
+relayr.on('data', function (topic, msg) {
+        var val = parseInt(msg.readings[0].value.charCodeAt(0)) * 42 - 584;
+        var threshold = 30;
+        if (Math.abs(lastweight - val) > threshold) {
+            counter++;
+            if(counter > 2){
+                console.log("OLD: " + lastWeight + ". NEW:" + val);
+                previousWeight = lastWeight;
+                lastWeight = val;
+                goIfReady();
+                counter  = 0;
+            }
+        }
+        
+});
+
 
 var db = new Db('hackTheHouse', new Server("127.0.0.1", 27017,
  {auto_reconnect: false, poolSize: 4}), {w:0, native_parser: false});
@@ -18,14 +48,14 @@ var previousWeight = 0;
 
 
 var users = {
-    12344 : "Jonas",
+    122 : "Jonas",
     123 : "User B"
 }
 
 var barcodes = {
     111 : "Coca Cola", 
     555 : "Milk",
-    4013143081078 : "Water"
+    4013143081078 : "Mineral Water"
 }
 
 
@@ -173,16 +203,51 @@ function updateFridge(productCode, productWeight){
 function lookupNutritionFacts(productCode, amount){
     var productName = barcodes[productCode];
     // Call Wolfram Alpha
-    var options = { host: 'www.random.org',
-                    path: '/integers/?num=1&min=1&max=10&col=1&base=10&format=plain&rnd=new'};
+    var url = "http://api.wolframalpha.com/v2/query?appid=7TPW94-3WQTJLGR7E&input="+ amount + "%20g%20of%20"+ productName +"&format=plaintext";
 
-    function callback(response){
-        console.log("RESPONSE");
-    }
-   // http.request(options, )
+    request(url, function (error, response, body) {
+      if (!error && response.statusCode == 200) {
+        return parseWolframAlpha(body); // Show the HTML for the Google homepage. 
+      }
+    })
 
 
-    return { carbohidrates : 300 , fat : 24, calories: 125 , cholesterol: 12, proteins: 3};
+    //return { carbohidrates : 300 , fat : 24, calories: 125 , cholesterol: 12, proteins: 3};
+}
+
+function parseWolframAlpha(rawData){
+    console.log("Got data. start parsing.");
+    var startFat = rawData.indexOf("total fat") + 11;
+    var endFat = rawData.indexOf("|", startFat) - 3;
+    var fat = parseInt(rawData.substring(startFat,endFat));
+
+    var startCarbo = rawData.indexOf("total carbohydrates") + 21;
+    var endCarbo = rawData.indexOf("|", startCarbo) - 3;
+    var carbohidrates = parseInt(rawData.substring(startCarbo,endCarbo)); 
+
+    var startProteins = rawData.indexOf("protein  ") + 9;
+    var endProteins = rawData.indexOf("|", startProteins) - 3;
+    var proteins = parseInt(rawData.substring(startProteins,endProteins)); 
+
+    var startCholesterol = rawData.indexOf("cholesterol  ") + 13;
+    var endCholesterol = rawData.indexOf("|", startCholesterol) - 3;
+    var cholesterol = parseInt(rawData.substring(startCholesterol,endCholesterol)); 
+
+    var startCalories = rawData.indexOf("tal calories  ") + 14;
+    var endCalories = rawData.indexOf("|", startCalories) - 3;
+    var calories = parseInt(rawData.substring(startCalories,endCalories)); 
+
+    console.log("Fat:" + fat, {carbohidrates : carbohidrates, fat: fat, proteins: proteins, calories: calories} )
+    console.log("finished parsing.");
+
+    // if WIFI times out use locally stored data
+    fallbackData = {
+        4013143081078:  {carbohidrates : carbohidrates, fat: fat, proteins: proteins, calories: calories}
+
+    };
+
+
+    return {carbohidrates : carbohidrates, fat: fat, proteins: proteins, calories: calories};
 }
 
 
@@ -309,6 +374,8 @@ exports.postLastId = function (req, res){
     console.log(name + " just logged in." );
     //lastUserName = name;
     lastUserId = userId;
+
+    console.log(lookupNutritionFacts(555, 300));
 
     res.send(200);
     goIfReady();
