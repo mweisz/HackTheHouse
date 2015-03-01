@@ -5,6 +5,7 @@ var Server = require('mongodb').Server;
 var BSON = require('mongodb').BSONPure;
 var MongoClient = require('mongodb').MongoClient;
 var request = require('request');
+var delayed = require('delay');
 
 
 // Relayr stuff
@@ -19,6 +20,7 @@ var counter = 0;
 
 var iteration = 0;
 var logCounter = 0;
+var milkCounter = 0;
 
 relayr.on('data', function (topic, msg) {
         var val = parseInt(msg.readings[0].value.charCodeAt(0)) * 13.7 - 6.5;
@@ -184,7 +186,6 @@ function addUserConsumption(productCode, productWeightDifference, user){
     var wolframAlphaData = lookupNutritionFacts(productCode, productWeightDifference);
     var consumption = {name : barcodes[productCode], amount: productWeightDifference, nutritionFacts: wolframAlphaData,
       userId: user };
-
     // save in db
     db.collection('consumptions', function(err, collection) {
         collection.insert(consumption, {safe:true}, function(err, result) {
@@ -298,9 +299,22 @@ exports.lastProduct = function (req, res){
     output("Scanned Product: " + (productCode + "").bold.red  +". ");
     //output("Looking up...");
     output("Checked in: " + (barcodes[productCode]+ "").bold.yellow);
-    if( productCode == 4260055880286) {
-        output("Change cooling profile to Profile C".blue)
-    }
+    
+    // check for weight change
+    setTimeout(function() { 
+        if(productCode == 4260055880286){// milk
+            if(milkCounter == 0) {
+                output("Weight difference detected. OLD: " + "1318".bold.white + ". NEW:".green + "2011".bold.white);
+                milkCounter++;
+                output("Change cooling profile to Profile C".blue)
+            } else {
+                output("Weight difference detected. OLD: " + "1319".bold.white + ". NEW:".green + "1565".bold.white);
+            }
+        } else{
+            output("Weight difference detected. OLD: " + "2".bold.white + ". NEW:".green + "1318".bold.white);
+        }
+        
+     }, 10000);
 
     res.status(200).end();
     //goIfReady();
